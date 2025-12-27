@@ -108,21 +108,22 @@ contract VestingWalletFactory is Ownable {
             "Factory: insufficient MOE balance"
         );
 
-        // 2. Effects - 克隆实现合约并初始化
+        // 2. Effects - 克隆实现合约并记录状态
         // 使用 EIP-1167 克隆（只需 ~50k gas）
         vestingWallet = vestingWalletImplementation.clone();
 
+        // 记录 VestingWallet（在外部调用前更新状态）
+        playerVestingWallets[beneficiary].push(vestingWallet);
+        allVestingWallets.push(vestingWallet);
+
+        // 3. Interactions - 外部调用（初始化和转账）
         // 初始化 proxy（设置 beneficiary 和 startTime）
         StageBasedVestingWallet(payable(vestingWallet)).initialize(
             beneficiary,
             uint64(block.timestamp)
         );
 
-        // 记录 VestingWallet（在外部调用前更新状态）
-        playerVestingWallets[beneficiary].push(vestingWallet);
-        allVestingWallets.push(vestingWallet);
-
-        // 3. Interactions - 外部调用（转账）
+        // 转账 MOE 到 VestingWallet
         require(
             moeToken.transfer(vestingWallet, amount),
             "Factory: transfer failed"

@@ -129,10 +129,7 @@ contract DepositContract is ReentrancyGuard {
     function _processDeposit(address player, uint256 amount) internal {
         require(amount > 0, "DepositContract: amount must be positive");
 
-        // 转账到 recipient（Owner）
-        moeToken.transferFrom(player, recipient, amount);
-
-        // 记录充值信息
+        // 记录充值信息 (Effects - 先修改状态)
         bytes32 txHash = blockhash(block.number - 1);
         deposits.push(Deposit({
             player: player,
@@ -143,6 +140,12 @@ contract DepositContract is ReentrancyGuard {
 
         uint256 depositIndex = deposits.length - 1;
         playerDepositIndices[player].push(depositIndex);
+
+        // 转账到 recipient（Owner）(Interactions - 最后外部调用)
+        require(
+            moeToken.transferFrom(player, recipient, amount),
+            "DepositContract: transfer failed"
+        );
 
         emit DepositMade(player, amount, block.timestamp, txHash);
     }
