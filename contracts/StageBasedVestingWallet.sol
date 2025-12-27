@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/finance/VestingWallet.sol";
 
 /**
  * @title StageBasedVestingWallet
- * @dev 阶段式解锁的 VestingWallet
+ * @dev 阶段式解锁的 VestingWallet（支持 EIP-1167 Minimal Proxy）
  *
  * 继承自 OpenZeppelin 的 VestingWallet，重写 vesting schedule 为阶段式解锁
  *
@@ -23,28 +23,98 @@ import "@openzeppelin/contracts/finance/VestingWallet.sol";
  * - T=90s:  75 MOE 可领取（累计）
  * - T=120s: 100 MOE 可领取（累计）
  *
- * 用法：
- * 1. VestingWalletFactory 创建实例并转入 MOE
- * 2. 玩家调用 release(moeToken) 领取
- * 3. 任何人可以调用，但代币只发给 owner (beneficiary)
+ * EIP-1167 支持：
+ * 1. VestingWalletFactory 部署一次实现合约
+ * 2. 使用 Clones.clone() 创建 minimal proxy
+ * 3. 调用 initialize() 初始化每个 proxy
+ * 4. Gas 成本从 ~150k 降低到 ~50k
  */
 contract StageBasedVestingWallet is VestingWallet {
+    // 防止重复初始化
+    bool private _initialized;
+
     // 阶段时间点（累计秒数）
-    uint64[4] private stageTimes = [30, 60, 90, 120];
+    uint64[4] private stageTimes;
 
     // 阶段解锁百分比（basis points: 10000 = 100%）
-    uint256[4] private stagePercents = [2500, 5000, 7500, 10000];
+    uint256[4] private stagePercents;
 
     /**
-     * @dev 构造函数
+     * @dev 构造函数（仅用于实现合约）
+     *
+     * 部署实现合约时使用一个虚拟地址（避免零地址错误）
+     * Proxy 实例会通过 initialize() 进行初始化
+     *
+     * 注意：实现合约的 beneficiary 设为 address(1) 作为标记
+     *       这个地址永远不会被使用，因为实现合约已被标记为初始化完成
+     */
+    constructor() VestingWallet(address(1), 0, 0) {
+        // 标记实现合约为已初始化，防止被直接使用
+        _initialized = true;
+    }
+
+    /**
+     * @dev 初始化函数（替代构造函数，用于 proxy）
      * @param beneficiary 受益人地址（玩家）
      * @param startTimestamp Vesting 开始时间（Unix timestamp）
      *
-     * duration 固定为 120 秒
+     * 要求：
+     * - 只能调用一次
+     * - beneficiary 不能为零地址
+     *
+     * 注意：这个函数没有访问控制，因为每个 proxy 只能初始化一次
+     *       VestingWalletFactory 在创建后立即调用
      */
-    constructor(address beneficiary, uint64 startTimestamp)
-        VestingWallet(beneficiary, startTimestamp, 120) // duration = 120秒
-    {}
+    function initialize(address beneficiary, uint64 startTimestamp) external {
+        require(!_initialized, "Already initialized");
+        require(beneficiary != address(0), "Beneficiary is zero address");
+
+        _initialized = true;
+
+        // 初始化阶段配置
+        stageTimes = [30, 60, 90, 120];
+        stagePercents = [2500, 5000, 7500, 10000];
+
+        // 转移所有权给受益人
+        // 注意：VestingWallet 继承自 Ownable，owner 初始是部署者
+        // 我们需要在这里设置正确的 owner 和 vesting 参数
+
+        // 由于 VestingWallet 的 start/duration 是 immutable，
+        // 我们需要用不同的方法来存储这些值
+        // 实际上，我们需要修改继承方式
+
+        // 将所有权转移给受益人
+        _transferOwnership(beneficiary);
+
+        // 存储 vesting 参数（需要添加状态变量）
+        _setVestingParams(startTimestamp, 120);
+    }
+
+    // 存储 vesting 开始时间和持续时间
+    uint64 private _startTimestamp;
+    uint64 private _durationSeconds;
+
+    /**
+     * @dev 内部函数：设置 vesting 参数
+     */
+    function _setVestingParams(uint64 startTimestamp, uint64 durationSeconds) private {
+        _startTimestamp = startTimestamp;
+        _durationSeconds = durationSeconds;
+    }
+
+    /**
+     * @dev 重写 start() 返回存储的开始时间
+     */
+    function start() public view virtual override returns (uint256) {
+        return _startTimestamp;
+    }
+
+    /**
+     * @dev 重写 duration() 返回存储的持续时间
+     */
+    function duration() public view virtual override returns (uint256) {
+        return _durationSeconds;
+    }
 
     /**
      * @dev 重写 vesting schedule 为阶段式解锁
@@ -104,5 +174,12 @@ contract StageBasedVestingWallet is VestingWallet {
         uint256[4] memory percents
     ) {
         return (stageTimes, stagePercents);
+    }
+
+    /**
+     * @dev 检查是否已初始化
+     */
+    function initialized() external view returns (bool) {
+        return _initialized;
     }
 }

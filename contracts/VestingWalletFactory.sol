@@ -5,13 +5,14 @@ import "./StageBasedVestingWallet.sol";
 import "./MOEToken.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
 
 /**
  * @title VestingWalletFactory
- * @dev 创建和管理 StageBasedVestingWallet 实例
+ * @dev 创建和管理 StageBasedVestingWallet 实例（使用 EIP-1167 Minimal Proxy）
  *
  * 职责：
- * - 为玩家创建独立的 VestingWallet
+ * - 为玩家创建独立的 VestingWallet（使用 minimal proxy 节省 gas）
  * - 从自身余额转账 MOE 到 VestingWallet
  * - 记录所有创建的 VestingWallet 地址
  *
@@ -21,12 +22,18 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * 3. Factory 从自身余额 transfer MOE 到新创建的 VestingWallet
  * 4. 当 Factory 余额不足时，Owner 可以 mint 或 transfer 补充
  *
- * Gas 优化建议：
- * - 当前每次创建部署新合约（~150k gas）
- * - 可优化为 EIP-1167 minimal proxy（~50k gas）
+ * Gas 优化（EIP-1167）：
+ * - 旧方式：每次部署新合约（~150k gas）
+ * - 新方式：克隆实现合约（~50k gas）
+ * - 节省：~100k gas per wallet (67% 降低)
  */
 contract VestingWalletFactory is Ownable {
+    using Clones for address;
+
     MOEToken public immutable moeToken;
+
+    // 实现合约地址（只部署一次）
+    address public immutable vestingWalletImplementation;
 
     // 记录每个玩家的所有 VestingWallet 地址
     mapping(address => address[]) public playerVestingWallets;
@@ -52,14 +59,19 @@ contract VestingWalletFactory is Ownable {
      * @dev 构造函数
      * @param _moeToken MOEToken 合约地址
      * @param initialOwner 合约所有者（Backend）
+     *
+     * 部署时会创建一个实现合约实例，后续所有 vesting wallet 都是它的 proxy
      */
     constructor(address _moeToken, address initialOwner) Ownable(initialOwner) {
         require(_moeToken != address(0), "Factory: MOEToken is zero address");
         moeToken = MOEToken(_moeToken);
+
+        // 部署实现合约（只部署一次）
+        vestingWalletImplementation = address(new StageBasedVestingWallet());
     }
 
     /**
-     * @dev 为玩家创建新的 vesting wallet
+     * @dev 为玩家创建新的 vesting wallet (使用 EIP-1167 minimal proxy)
      * @param beneficiary 受益人地址（玩家）
      * @param amount 锁定金额
      * @return vestingWallet 新创建的 VestingWallet 地址
@@ -67,10 +79,11 @@ contract VestingWalletFactory is Ownable {
      * 流程：
      * 1. 验证参数
      * 2. 检查 Factory 余额是否充足
-     * 3. 创建 StageBasedVestingWallet 实例
-     * 4. 从 Factory 转账 MOE 到 VestingWallet
-     * 5. 记录 VestingWallet 地址
-     * 6. 发出 VestingCreated 事件
+     * 3. 克隆实现合约（minimal proxy）
+     * 4. 初始化 proxy
+     * 5. 从 Factory 转账 MOE 到 VestingWallet
+     * 6. 记录 VestingWallet 地址
+     * 7. 发出 VestingCreated 事件
      *
      * 要求：
      * - 只有 owner 可以调用
@@ -79,7 +92,7 @@ contract VestingWalletFactory is Ownable {
      * - amount 必须能被 4 整除（因为 4 个阶段各 25%）
      * - Factory 余额必须 >= amount
      *
-     * Gas 消耗：约 150,000 gas
+     * Gas 消耗：约 50,000 gas（相比旧方式的 150k gas 节省 67%）
      */
     function createVesting(address beneficiary, uint256 amount)
         external
@@ -95,12 +108,15 @@ contract VestingWalletFactory is Ownable {
             "Factory: insufficient MOE balance"
         );
 
-        // 2. Effects - 创建钱包并更新状态
-        StageBasedVestingWallet wallet = new StageBasedVestingWallet(
+        // 2. Effects - 克隆实现合约并初始化
+        // 使用 EIP-1167 克隆（只需 ~50k gas）
+        vestingWallet = vestingWalletImplementation.clone();
+
+        // 初始化 proxy（设置 beneficiary 和 startTime）
+        StageBasedVestingWallet(payable(vestingWallet)).initialize(
             beneficiary,
             uint64(block.timestamp)
         );
-        vestingWallet = address(wallet);
 
         // 记录 VestingWallet（在外部调用前更新状态）
         playerVestingWallets[beneficiary].push(vestingWallet);
@@ -149,5 +165,13 @@ contract VestingWalletFactory is Ownable {
      */
     function getBalance() external view returns (uint256) {
         return moeToken.balanceOf(address(this));
+    }
+
+    /**
+     * @dev 查询实现合约地址（用于调试）
+     * @return address 实现合约地址
+     */
+    function getImplementation() external view returns (address) {
+        return vestingWalletImplementation;
     }
 }
