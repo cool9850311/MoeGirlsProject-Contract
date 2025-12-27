@@ -1,0 +1,21 @@
+node_modules
+.env
+coverage
+coverage.json
+typechain
+typechain-types
+
+# Hardhat files
+cache
+artifacts
+
+# Build info
+build-info
+
+# Slither
+slither-report.json
+slither-report.md
+
+# Mythril
+mythril-report.md
+mythril-report.json
