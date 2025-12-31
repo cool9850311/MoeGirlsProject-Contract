@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import "./MOEToken.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title DepositContract
@@ -29,7 +30,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * 经济闭环：
  * 玩家充值 → Owner → Factory 补充 → VestingWallet → 玩家提现
  */
-contract DepositContract is ReentrancyGuard {
+contract DepositContract is ReentrancyGuard, Ownable {
 
     MOEToken public immutable moeToken;
     address public immutable recipient; // 收款地址（Owner）
@@ -65,8 +66,11 @@ contract DepositContract is ReentrancyGuard {
      * @dev 构造函数
      * @param _moeToken MOEToken 合约地址
      * @param _recipient 收款地址（Owner）
+     * @param initialOwner 合约 owner 地址（用于访问控制）
      */
-    constructor(address _moeToken, address _recipient) {
+    constructor(address _moeToken, address _recipient, address initialOwner)
+        Ownable(initialOwner)
+    {
         require(_moeToken != address(0), "DepositContract: MOEToken is zero address");
         require(_recipient != address(0), "DepositContract: Recipient is zero address");
 
@@ -113,7 +117,7 @@ contract DepositContract is ReentrancyGuard {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external nonReentrant {
+    ) external nonReentrant onlyOwner {
         // 使用 ERC-2612 permit 批准
         moeToken.permit(player, address(this), amount, deadline, v, r, s);
 
