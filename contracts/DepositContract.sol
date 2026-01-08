@@ -91,6 +91,15 @@ contract DepositContract is ReentrancyGuard, Ownable {
     }
 
     /**
+     * @dev Backend 代扣充值 (需先 Approve)
+     * @param from 扣款帳戶 (Safe)
+     * @param amount 金額
+     */
+    function depositFor(address from, uint256 amount) external nonReentrant onlyOwner {
+        _processDeposit(from, amount);
+    }
+
+    /**
      * @dev Gasless 充值（使用 ERC-2612 Permit）
      * @param player 玩家地址
      * @param amount 充值金额

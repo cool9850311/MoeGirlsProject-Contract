@@ -18,11 +18,12 @@ describe("DepositContract", function () {
     moeToken = await MOEToken.deploy(owner.address);
     await moeToken.deployed();
 
-    // Deploy DepositContract (recipient = owner)
+    // Deploy DepositContract (recipient = owner, initialOwner = owner)
     DepositContract = await ethers.getContractFactory("DepositContract");
     depositContract = await DepositContract.deploy(
       moeToken.address,
-      owner.address  // recipient = owner
+      owner.address,  // recipient = owner
+      owner.address   // initialOwner = owner (for access control)
     );
     await depositContract.deployed();
 
@@ -46,13 +47,13 @@ describe("DepositContract", function () {
 
     it("Should revert if MOEToken address is zero", async function () {
       await expect(
-        DepositContract.deploy(ethers.constants.AddressZero, owner.address)
+        DepositContract.deploy(ethers.constants.AddressZero, owner.address, owner.address)
       ).to.be.revertedWith("DepositContract: MOEToken is zero address");
     });
 
     it("Should revert if Recipient address is zero", async function () {
       await expect(
-        DepositContract.deploy(moeToken.address, ethers.constants.AddressZero)
+        DepositContract.deploy(moeToken.address, ethers.constants.AddressZero, owner.address)
       ).to.be.revertedWith("DepositContract: Recipient is zero address");
     });
   });
@@ -215,6 +216,7 @@ describe("DepositContract", function () {
       // Deploy new contract with no deposits
       const newDepositContract = await DepositContract.deploy(
         moeToken.address,
+        owner.address,
         owner.address
       );
       await newDepositContract.deployed();
@@ -370,6 +372,111 @@ describe("DepositContract", function () {
       await expect(
         depositContract.depositWithPermit(player1.address, depositAmount, deadline, sig.v, sig.r, sig.s)
       ).to.be.reverted;
+    });
+
+    it("Should revert when non-owner calls depositWithPermit", async function () {
+      const depositAmount = ethers.utils.parseEther("200");
+      const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+
+      // Get nonce
+      const nonce = await moeToken.nonces(player1.address);
+
+      // Create permit signature
+      const domain = {
+        name: "MoeGirls Token",
+        version: "1",
+        chainId: (await ethers.provider.getNetwork()).chainId,
+        verifyingContract: moeToken.address,
+      };
+
+      const types = {
+        Permit: [
+          { name: "owner", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      };
+
+      const value = {
+        owner: player1.address,
+        spender: depositContract.address,
+        value: depositAmount,
+        nonce: nonce,
+        deadline: deadline,
+      };
+
+      const signature = await player1._signTypedData(domain, types, value);
+      const sig = ethers.utils.splitSignature(signature);
+
+      // Non-owner (player2) tries to call depositWithPermit - should revert
+      await expect(
+        depositContract.connect(player2).depositWithPermit(
+          player1.address,
+          depositAmount,
+          deadline,
+          sig.v,
+          sig.r,
+          sig.s
+        )
+      ).to.be.revertedWithCustomError(depositContract, "OwnableUnauthorizedAccount");
+    });
+
+    it("Should allow owner to call depositWithPermit", async function () {
+      const depositAmount = ethers.utils.parseEther("200");
+      const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+
+      // Get nonce
+      const nonce = await moeToken.nonces(player1.address);
+
+      // Create permit signature
+      const domain = {
+        name: "MoeGirls Token",
+        version: "1",
+        chainId: (await ethers.provider.getNetwork()).chainId,
+        verifyingContract: moeToken.address,
+      };
+
+      const types = {
+        Permit: [
+          { name: "owner", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      };
+
+      const value = {
+        owner: player1.address,
+        spender: depositContract.address,
+        value: depositAmount,
+        nonce: nonce,
+        deadline: deadline,
+      };
+
+      const signature = await player1._signTypedData(domain, types, value);
+      const sig = ethers.utils.splitSignature(signature);
+
+      const initialOwnerBalance = await moeToken.balanceOf(owner.address);
+
+      // Owner calls depositWithPermit - should succeed
+      await expect(
+        depositContract.connect(owner).depositWithPermit(
+          player1.address,
+          depositAmount,
+          deadline,
+          sig.v,
+          sig.r,
+          sig.s
+        )
+      ).to.emit(depositContract, "DepositMade");
+
+      // Verify tokens went to owner (recipient)
+      expect(await moeToken.balanceOf(owner.address)).to.equal(
+        initialOwnerBalance.add(depositAmount)
+      );
     });
   });
 

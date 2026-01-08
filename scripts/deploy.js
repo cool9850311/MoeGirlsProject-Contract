@@ -67,11 +67,13 @@ async function main() {
   const DepositContract = await ethers.getContractFactory("DepositContract");
   const depositContract = await DepositContract.deploy(
     moeToken.address,
-    deployer.address  // recipient 设为 owner
+    deployer.address,  // recipient 设为 owner
+    deployer.address   // initialOwner 设为 owner（访问控制）
   );
   await depositContract.deployed();
   console.log("   ✅ DepositContract 部署到:", depositContract.address);
   console.log("   🏦 收款地址（recipient）:", deployer.address);
+  console.log("   🔐 合约 Owner:", deployer.address);
   console.log("");
 
   // 验证余额
@@ -128,6 +130,38 @@ async function main() {
   console.log("   Deposit → Owner → Factory → VestingWallet → Player");
   console.log("");
   console.log("=".repeat(60));
+
+  // 保存部署信息到 JSON 文件
+  const fs = require("fs");
+  const path = require("path");
+  const dataDir = path.join(__dirname, "..", "hardhat-data");
+
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+
+  const deploymentInfo = {
+    timestamp: new Date().toISOString(),
+    network: network.name,
+    chainId: network.chainId,
+    deployer: deployer.address,
+    contracts: {
+      MOEToken: moeToken.address,
+      VestingWalletFactory: factory.address,
+      DepositContract: depositContract.address,
+    },
+    env: {
+      MOE_TOKEN_ADDRESS: moeToken.address,
+      VESTING_FACTORY_ADDRESS: factory.address,
+      DEPOSIT_CONTRACT_ADDRESS: depositContract.address,
+      BACKEND_PRIVATE_KEY: process.env.BACKEND_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+    }
+  };
+
+  const deploymentFile = path.join(dataDir, "deployments.json");
+  fs.writeFileSync(deploymentFile, JSON.stringify(deploymentInfo, null, 2));
+  console.log("💾 部署信息已保存到:", deploymentFile);
+  console.log("");
 }
 
 main()
