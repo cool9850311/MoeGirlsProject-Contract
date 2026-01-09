@@ -7,6 +7,7 @@ const { getSafeOperationHash, formatSafeSignature } = require("./utils/SafeHelpe
 const MINIMUM_MOE_BALANCE = ethers.utils.parseEther("50");
 
 describe("MoeGirls Flows (Safe + AA)", function () {
+    this.timeout(120000); // 120s timeout for Fork tests
     let fixture;
     let entryPoint, safe4337Module, paymaster, nft, marketplace, moeToken, vestingFactory, depositContract;
     let user1, user1Safe;
@@ -52,11 +53,11 @@ describe("MoeGirls Flows (Safe + AA)", function () {
             nonce: nonce,
             initCode: "0x",
             callData: callData,
-            callGasLimit: 500000,
             verificationGasLimit: 1500000,
+            callGasLimit: 500000,
             preVerificationGas: 50000,
-            maxFeePerGas: await ethers.provider.getGasPrice(),
-            maxPriorityFeePerGas: await ethers.provider.getGasPrice(),
+            maxFeePerGas: ethers.utils.parseUnits("50", "gwei"),
+            maxPriorityFeePerGas: ethers.utils.parseUnits("50", "gwei"),
             paymasterAndData: paymasterAndData,
             signature: "0x"
         };
@@ -118,7 +119,23 @@ describe("MoeGirls Flows (Safe + AA)", function () {
         packedOp[8] = paddedSignature;
 
         // Execute
-        const tx = await entryPoint.handleOps([packedOp], fixture.relayer.address);
+        let tx;
+        try {
+            tx = await entryPoint.handleOps([packedOp], fixture.relayer.address);
+        } catch (error) {
+            console.log("HandleOps Reverted!");
+            if (error.data) {
+                try {
+                    const decoded = entryPoint.interface.parseError(error.data);
+                    console.log("Decoded Error:", decoded);
+                } catch (e) {
+                    console.log("Could not decode error data:", error.data);
+                }
+            } else {
+                console.log("Error object:", error);
+            }
+            throw error;
+        }
         const receipt = await tx.wait();
 
         // Check UserOperationEvent

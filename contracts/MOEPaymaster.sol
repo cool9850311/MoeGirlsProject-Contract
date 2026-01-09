@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@account-abstraction/contracts/interfaces/IPaymaster.sol";
 import "@account-abstraction/contracts/core/EntryPoint.sol";
 import "@account-abstraction/contracts/interfaces/PackedUserOperation.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
@@ -13,12 +13,17 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  *      Configurable fee per operation.
  */
 contract MOEPaymaster is IPaymaster, Ownable {
+    using SafeERC20 for IERC20;
+
     IEntryPoint public immutable entryPoint;
     IERC20 public immutable moeToken;
 
     uint256 public constant COST_OF_POST = 15000;
 
-    constructor(IEntryPoint _entryPoint, address _moeToken) Ownable(msg.sender) {
+    constructor(
+        IEntryPoint _entryPoint,
+        address _moeToken
+    ) Ownable(msg.sender) {
         entryPoint = _entryPoint;
         moeToken = IERC20(_moeToken);
     }
@@ -32,12 +37,15 @@ contract MOEPaymaster is IPaymaster, Ownable {
         bytes32 userOpHash,
         uint256 maxCost
     ) external override returns (bytes memory context, uint256 validationData) {
-        require(msg.sender == address(entryPoint), "Paymaster: caller not EntryPoint");
+        require(
+            msg.sender == address(entryPoint),
+            "Paymaster: caller not EntryPoint"
+        );
 
         // Parse paymasterAndData
         // Format v0.7: [paymaster (20)] [valGasLim (16)] [postOpGasLim (16)] [paymasterData]
         // We put 'fee' in paymasterData.
-        
+
         bytes calldata accData = userOp.paymasterAndData;
         // 20 + 32 (limits) + 32 (fee) = 84
         require(accData.length >= 84, "Paymaster: data too short");
@@ -47,17 +55,17 @@ contract MOEPaymaster is IPaymaster, Ownable {
 
         // Check if Safe has enough MOE
         if (fee > 0) {
-            require(moeToken.balanceOf(userOp.sender) >= fee, "Paymaster: insufficient MOE balance");
-            // Also requires approval? No, UserOp execution allows transferFrom IF approved?
-            // Actually, we transfer in postOp. The Safe MUST approve Paymaster?
-            // "Paymaster needs approval" -> usually handled by `execute` batch approving Paymaster?
-            // OR Paymaster logic often trusts the account?
-            // AA pattern: UserOp calls 'approve' in executeBatch, THEN Paymaster pulls in postOp.
-            // So we just check balance here.
+            require(
+                moeToken.balanceOf(userOp.sender) >= fee,
+                "Paymaster: insufficient MOE balance"
+            );
         }
-        
+
         // Verify we have enough ETH deposit in EntryPoint
-        require(entryPoint.balanceOf(address(this)) >= maxCost, "Paymaster: insufficient ETH deposit");
+        require(
+            entryPoint.balanceOf(address(this)) >= maxCost,
+            "Paymaster: insufficient ETH deposit"
+        );
 
         return (abi.encode(userOp.sender, fee), 0);
     }
@@ -71,33 +79,31 @@ contract MOEPaymaster is IPaymaster, Ownable {
         uint256 actualGasCost,
         uint256 actualUserOpFeePerGas
     ) external override {
-        require(msg.sender == address(entryPoint), "Paymaster: caller not EntryPoint");
-        
-        // Only charge on success? Or always?
-        // Prototype said "charge 50 MOE".
-        // Usually we charge regardless? 
-        // Let's charge only on success for now to be friendly.
+        require(
+            msg.sender == address(entryPoint),
+            "Paymaster: caller not EntryPoint"
+        );
+
         if (mode == PostOpMode.opSucceeded) {
-            (address sender, uint256 fee) = abi.decode(context, (address, uint256));
+            (address sender, uint256 fee) = abi.decode(
+                context,
+                (address, uint256)
+            );
             if (fee > 0) {
-                // Pull Tokens
-                // Requires spender allowance!
-                // If Safe failed to approve, this reverts -> transaction fails?
-                // If postOp reverts, the UserOp reverts? 
-                // In v0.7, postOp revert causes inner revert.
-                bool success = moeToken.transferFrom(sender, address(this), fee);
-                require(success, "Paymaster: fee transfer blocked");
+                // Feature: Use SafeERC20 to ensure transfer reverts properly on any failure
+                // Also handles non-standard ERC20s if we ever switch token
+                moeToken.safeTransferFrom(sender, address(this), fee);
             }
         }
     }
-    
+
     // Deposit to EntryPoint
     function deposit() external payable {
         entryPoint.depositTo{value: msg.value}(address(this));
     }
-    
+
     // Withdraw MOE
     function withdrawMOE(address to, uint256 amount) external onlyOwner {
-        moeToken.transfer(to, amount);
+        moeToken.safeTransfer(to, amount);
     }
 }

@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import "./MOEToken.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title DepositContract
@@ -31,6 +32,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  * 玩家充值 → Owner → Factory 补充 → VestingWallet → 玩家提现
  */
 contract DepositContract is ReentrancyGuard, Ownable {
+    using SafeERC20 for IERC20;
 
     MOEToken public immutable moeToken;
     address public immutable recipient; // 收款地址（Owner）
@@ -68,11 +70,19 @@ contract DepositContract is ReentrancyGuard, Ownable {
      * @param _recipient 收款地址（Owner）
      * @param initialOwner 合约 owner 地址（用于访问控制）
      */
-    constructor(address _moeToken, address _recipient, address initialOwner)
-        Ownable(initialOwner)
-    {
-        require(_moeToken != address(0), "DepositContract: MOEToken is zero address");
-        require(_recipient != address(0), "DepositContract: Recipient is zero address");
+    constructor(
+        address _moeToken,
+        address _recipient,
+        address initialOwner
+    ) Ownable(initialOwner) {
+        require(
+            _moeToken != address(0),
+            "DepositContract: MOEToken is zero address"
+        );
+        require(
+            _recipient != address(0),
+            "DepositContract: Recipient is zero address"
+        );
 
         moeToken = MOEToken(_moeToken);
         recipient = _recipient;
@@ -95,7 +105,10 @@ contract DepositContract is ReentrancyGuard, Ownable {
      * @param from 扣款帳戶 (Safe)
      * @param amount 金額
      */
-    function depositFor(address from, uint256 amount) external nonReentrant onlyOwner {
+    function depositFor(
+        address from,
+        uint256 amount
+    ) external nonReentrant onlyOwner {
         _processDeposit(from, amount);
     }
 
@@ -144,21 +157,20 @@ contract DepositContract is ReentrancyGuard, Ownable {
 
         // 记录充值信息 (Effects - 先修改状态)
         bytes32 txHash = blockhash(block.number - 1);
-        deposits.push(Deposit({
-            player: player,
-            amount: amount,
-            timestamp: block.timestamp,
-            txHash: txHash
-        }));
+        deposits.push(
+            Deposit({
+                player: player,
+                amount: amount,
+                timestamp: block.timestamp,
+                txHash: txHash
+            })
+        );
 
         uint256 depositIndex = deposits.length - 1;
         playerDepositIndices[player].push(depositIndex);
 
         // 转账到 recipient（Owner）(Interactions - 最后外部调用)
-        require(
-            moeToken.transferFrom(player, recipient, amount),
-            "DepositContract: transfer failed"
-        );
+        IERC20(address(moeToken)).safeTransferFrom(player, recipient, amount);
 
         emit DepositMade(player, amount, block.timestamp, txHash);
     }
@@ -181,12 +193,22 @@ contract DepositContract is ReentrancyGuard, Ownable {
      * @return timestamp 充值时间
      * @return txHash 交易哈希
      */
-    function getDeposit(uint256 index)
+    function getDeposit(
+        uint256 index
+    )
         external
         view
-        returns (address player, uint256 amount, uint256 timestamp, bytes32 txHash)
+        returns (
+            address player,
+            uint256 amount,
+            uint256 timestamp,
+            bytes32 txHash
+        )
     {
-        require(index < deposits.length, "DepositContract: invalid deposit index");
+        require(
+            index < deposits.length,
+            "DepositContract: invalid deposit index"
+        );
         Deposit memory d = deposits[index];
         return (d.player, d.amount, d.timestamp, d.txHash);
     }
@@ -196,11 +218,9 @@ contract DepositContract is ReentrancyGuard, Ownable {
      * @param player 玩家地址
      * @return uint256[] 充值索引数组
      */
-    function getPlayerDepositIndices(address player)
-        external
-        view
-        returns (uint256[] memory)
-    {
+    function getPlayerDepositIndices(
+        address player
+    ) external view returns (uint256[] memory) {
         return playerDepositIndices[player];
     }
 
@@ -209,11 +229,9 @@ contract DepositContract is ReentrancyGuard, Ownable {
      * @param player 玩家地址
      * @return Deposit[] 充值记录数组
      */
-    function getPlayerDeposits(address player)
-        external
-        view
-        returns (Deposit[] memory)
-    {
+    function getPlayerDeposits(
+        address player
+    ) external view returns (Deposit[] memory) {
         uint256[] memory indices = playerDepositIndices[player];
         Deposit[] memory playerDeposits = new Deposit[](indices.length);
 
@@ -229,11 +247,9 @@ contract DepositContract is ReentrancyGuard, Ownable {
      * @param count 数量
      * @return Deposit[] 充值记录数组（倒序，最新的在前）
      */
-    function getRecentDeposits(uint256 count)
-        external
-        view
-        returns (Deposit[] memory)
-    {
+    function getRecentDeposits(
+        uint256 count
+    ) external view returns (Deposit[] memory) {
         if (count > deposits.length) {
             count = deposits.length;
         }

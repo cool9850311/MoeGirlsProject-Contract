@@ -1,0 +1,11 @@
+{
+    "remappings": [
+        "@account-abstraction/=node_modules/@account-abstraction/",
+        "@openzeppelin/=node_modules/@openzeppelin/",
+        "@safe-global/=node_modules/@safe-global/"
+    ],
+    "optimizer": {
+        "enabled": true,
+        "runs": 200
+    }
+}

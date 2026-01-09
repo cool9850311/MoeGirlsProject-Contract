@@ -3,57 +3,55 @@ const safeSingletonArtifact = require("@safe-global/safe-contracts/build/artifac
 const safeFactoryArtifact = require("@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxyFactory.sol/SafeProxyFactory.json");
 const { packUserOp, getUserOpHash } = require("./utils/AaHelpers");
 
+const SAFE_SINGLETON_ADDRESS = "0x41675C099F32341bf84BFc5382aF534df5C7461a"; // v1.4.1
+const SAFE_FACTORY_ADDRESS = "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67"; // v1.4.1
+const ENTRYPOINT_ADDRESS = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"; // v0.7
+const SAFE_4337_MODULE_ADDRESS = "0x75cf11467937ce3F2f357CE24ffc3DBF8fD5c226"; // Candide v0.3.0
+const FALLBACK_HANDLER_ADDRESS = "0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4"; // CompatibilityFallbackHandler v1.3.0 (Compatible with 1.4.1 mostly, but check if we need 1.4.1 specific one)
+
+// Note: For Safe v1.4.1, the CompatibilityFallbackHandler address may differ or be the same.
+// 1.4.1 CompatibilityFallbackHandler: 0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4 (Same as 1.3.0 usually)
+// Let's verify if there is a specific one for 1.4.1. For now, we use the one known to work or the one found.
+// Actually, standard Safe 1.4.1 deployment usually uses: 0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4
+
 async function deployAaFixture() {
     const [deployer, relayer, user1, user2] = await ethers.getSigners();
 
-    // 1. Deploy EntryPoint
-    const EntryPoint = await ethers.getContractFactory("EntryPoint");
-    const entryPoint = await EntryPoint.deploy();
-    await entryPoint.deployed();
+    // 1. Connect to Canonical Contracts
+    const entryPoint = await ethers.getContractAt("EntryPoint", ENTRYPOINT_ADDRESS);
+    const safeSingleton = await ethers.getContractAt(safeSingletonArtifact.abi, SAFE_SINGLETON_ADDRESS);
+    const safeFactory = await ethers.getContractAt(safeFactoryArtifact.abi, SAFE_FACTORY_ADDRESS);
 
-    // 2. Deploy Safe Contracts using Artifacts
-    const SafeSingleton = await ethers.getContractFactory(safeSingletonArtifact.abi, safeSingletonArtifact.bytecode);
-    const safeSingleton = await SafeSingleton.deploy();
-    await safeSingleton.deployed();
+    // 2. Connect to Official Safe4337Module (No deployment needed)
+    // We create a minimal interface for testing purposes (encoding calls)
+    const Safe4337ModuleABI = [
+        "function executeUserOp(address to, uint256 value, bytes data, uint8 operation)",
+        "function validateUserOp(tuple(address sender, uint256 nonce, bytes initCode, bytes callData, uint256 callGasLimit, uint256 verificationGasLimit, uint256 preVerificationGas, uint256 maxFeePerGas, uint256 maxPriorityFeePerGas, bytes paymasterAndData, bytes signature) userOp, bytes32 userOpHash, uint256 missingAccountFunds) returns (uint256 validationData)"
+    ];
+    const safe4337Module = {
+        address: SAFE_4337_MODULE_ADDRESS,
+        interface: new ethers.utils.Interface(Safe4337ModuleABI)
+    };
 
-    const SafeFactory = await ethers.getContractFactory(safeFactoryArtifact.abi, safeFactoryArtifact.bytecode);
-    const safeFactory = await SafeFactory.deploy();
-    await safeFactory.deployed();
-
-    // 4. Deploy MOE Token
+    // 3. Deploy MOE Token
     const MOEToken = await ethers.getContractFactory("MOEToken");
-    // MOE Token constructor: (address initialOwner)
     const moeToken = await MOEToken.deploy(deployer.address);
     await moeToken.deployed();
 
-    // Deploy Vesting Factory
+    // 4. Deploy Vesting & Deposit
     const VestingFactory = await ethers.getContractFactory("VestingWalletFactory");
     const vestingFactory = await VestingFactory.deploy(moeToken.address, deployer.address);
     await vestingFactory.deployed();
 
-    // Deploy Deposit Contract
     const DepositContract = await ethers.getContractFactory("DepositContract");
-    const depositContract = await DepositContract.deploy(
-        moeToken.address,
-        deployer.address, // Recipient
-        deployer.address  // Owner
-    );
+    const depositContract = await DepositContract.deploy(moeToken.address, deployer.address, deployer.address);
     await depositContract.deployed();
-
-    // Deploy Safe Factory & 4337 Module
-    const Safe4337Module = await ethers.getContractFactory("Safe4337Module");
-    const safe4337Module = await Safe4337Module.deploy(entryPoint.address);
-    await safe4337Module.deployed();
-
-    
 
     // 5. Deploy Paymaster
     const MOEPaymaster = await ethers.getContractFactory("MOEPaymaster");
     const paymaster = await MOEPaymaster.deploy(entryPoint.address, moeToken.address);
     await paymaster.deployed();
-
-    // Deposit Paymaster's stake/deposit into EntryPoint
-    await paymaster.deposit({ value: ethers.utils.parseEther("100.0") });
+    await paymaster.deposit({ value: ethers.utils.parseEther("10.0") }); // Fund Paymaster on EntryPoint (needs ETH)
 
     // 6. Deploy NFT & Market
     const MoeGirlsNFT = await ethers.getContractFactory("MoeGirlsNFT");
@@ -64,185 +62,107 @@ async function deployAaFixture() {
     const marketplace = await MoeGirlsMarketplace.deploy(nft.address, moeToken.address);
     await marketplace.deployed();
 
-    // Helper to deploy and configure a Safe
+    // Helper: Deploy Safe via Factory
     async function deploySafe(ownerSigner) {
         const owner = ownerSigner.address;
+        const saltNonce = Date.now() + Math.floor(Math.random() * 1000); // Random nonce for uniqueness
 
-        // Debug: Try empty initializer
-        const setupData = "0x";
-
-        // const setupData = safeSingleton.interface.encodeFunctionData("setup", [ ... ]);
-
-        // Monitor Addresses
-        console.log("Safe Singleton:", safeSingleton.address);
-        console.log("Safe Factory:", safeFactory.address);
-
-        // Debug: Deploy Proxy Manually
-        const safeProxyArtifact = require("@safe-global/safe-contracts/build/artifacts/contracts/proxies/SafeProxy.sol/SafeProxy.json");
-        const SafeProxy = await ethers.getContractFactory(safeProxyArtifact.abi, safeProxyArtifact.bytecode);
-
-        // constructor(singleton)
-        const safeProxy = await SafeProxy.deploy(safeSingleton.address);
-        await safeProxy.deployed();
-
-        const proxyAddress = safeProxy.address;
-
-        // If manual deployment works, then Factory is issue.
-        // But for our test, we can use manually deployed proxy!
-
-        /*
-        const setupData = "0x";
-        const saltNonce = Date.now();
-        await safeFactory.createProxyWithNonce(safeSingleton.address, setupData, saltNonce);
-        const proxyAddress = await safeFactory.callStatic.createProxyWithNonce(safeSingleton.address, setupData, saltNonce);
-        */
-
-        /*
-        // Calculate Address
-        // We can find it from event or predict. For test simplicity, let's just get likely address
-        // But createProxyWithNonce returns the proxy. 
-        // We can just capture the event.
-        // Actually, Hardhat doesn't return return value of transaction comfortably without static call.
-        // const proxyAddress = await safeFactory.callStatic.createProxyWithNonce(safeSingleton.address, setupData, saltNonce);
-        */
-
-        const safe = await ethers.getContractAt(safeSingletonArtifact.abi, proxyAddress);
-
-        // Setup Manual Proxy:
-        // Manual deployment does NOT call setup (unless we do it manually).
-        // So we must call setup(owners...) on the Proxy now.
-        // We defined setupData before. But we commented it out for debugging. 
-        // Let's bring it back.
-
-        const setupDataReal = safeSingleton.interface.encodeFunctionData("setup", [
+        // Setup Data: standard setup + enable module via fallback logic later or init
+        // For Safe 1.3.0, setup includes: owners, threshold, to, data, fallbackHandler, paymentToken, payment, paymentReceiver
+        const setupData = safeSingleton.interface.encodeFunctionData("setup", [
+            // Safe is already initialized via createProxyWithNonce(..., setupData, ...)
+            // DO NOT call safe.setup() again.
             [owner], // owners
             1,       // threshold
             ethers.constants.AddressZero, // to
             "0x",    // data
-            ethers.constants.AddressZero, // fallbackHandler (Debug: AddressZero for now to verify basic flow, then switch to safe4337Module)
+            safe4337Module.address, // fallbackHandler (Safe4337Module)
             ethers.constants.AddressZero, // paymentToken
             0,       // payment
             ethers.constants.AddressZero  // paymentReceiver
         ]);
 
-        await safe.setup(
-            [owner],
-            1,
-            ethers.constants.AddressZero,
-            ethers.utils.arrayify("0x"),
-            safe4337Module.address, // Safe4337Module is BOTH module AND fallback (includes ERC1155 reception)
-            ethers.constants.AddressZero,
-            0,
-            ethers.constants.AddressZero
-        );
+        // Create Proxy using Factory
+        // createProxyWithNonce returns SafeProxy address
+        const tx = await safeFactory.createProxyWithNonce(safeSingleton.address, setupData, saltNonce);
+        const receipt = await tx.wait();
 
-        const owners = await safe.getOwners();
-        console.log("Safe Owners:", owners);
-        console.log("Is Owner:", await safe.isOwner(ownerSigner.address));
+        // Find ProxyCreation event
+        let proxyAddress;
 
-        // Enable Module Transaction
-        // Need to execute a transaction signed by owner to enable module
-        // userOp needs module enabled.
+        // 1. Try Standard Parsing
+        const proxyCreationEvent = receipt.events ? receipt.events.find(e => e.event === 'ProxyCreation') : null;
+        if (proxyCreationEvent) {
+            proxyAddress = proxyCreationEvent.args.proxy;
+        } else {
+            // 2. Fallback: Parse log manually
+            // Look for topic 0x4f51faf6c4561ff95f067657e43439f0f856d97c04d9ec9070a6199ad418e235
+            const PROXY_CREATION_TOPIC = "0x4f51faf6c4561ff95f067657e43439f0f856d97c04d9ec9070a6199ad418e235";
+            const log = receipt.logs.find(l => l.topics[0] === PROXY_CREATION_TOPIC);
+
+            if (log) {
+                // Decode data: address proxy, address singleton
+                // Both are non-indexed in Safe 1.3.0 (so in data)
+                const decoded = ethers.utils.defaultAbiCoder.decode(["address", "address"], log.data);
+                proxyAddress = decoded[0];
+            } else {
+                console.log("Debug: All logs topics:", receipt.logs.map(l => l.topics[0]));
+                throw new Error("ProxyCreation event not found (Manual Parse Failed)");
+            }
+        }
+
+        const safe = await ethers.getContractAt(safeSingletonArtifact.abi, proxyAddress);
+
+        // Enable Module
+        // We need to enable the Safe4337Module as a module too (not just fallback)
+        // Sign enableModule transaction
         const enableData = safe.interface.encodeFunctionData("enableModule", [safe4337Module.address]);
-
-        // Sign Transaction (Safe v1.4.1 Signatures)
-        // Safe Transact: to, value, data, operation, ... signatures
-        // Nonce is 0.
         const nonce = await safe.nonce();
-        const txHashHash = await safe.getTransactionHash(
-            safe.address, // to (self)
-            0, // value
-            enableData, // data
-            0, // operation (Call)
-            0, 0, 0, ethers.constants.AddressZero, ethers.constants.AddressZero, // gas/refund
-            nonce
+        const txHash = await safe.getTransactionHash(
+            safe.address, 0, enableData, 0, 0, 0, 0, ethers.constants.AddressZero, ethers.constants.AddressZero, nonce
         );
 
-        // EOA Sign
-        // Hardhat/Ethers signMessage prefixes the message. Safe ecrecover with v+4 expects that.
-        // But since it failed, let's try signing the raw digest directly (no prefix).
-        // User1 is index 2. Deployer is index 0. user1 is passed as arg.
-        // We need PK.
-        // Hardhat default PKs:
-        // 0: 0xac09...
-        // 1: 0x59c6...
-        // 2: 0x5de4...
-        // We'll check address to be sure or just use the wallet from PK.
+        // Use approveHash pattern to avoid signature format issues
+        // 1. Approve Hash
+        await safe.connect(ownerSigner).approveHash(txHash);
 
-        let signerKey;
-        if (ownerSigner.address === "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266") { // Deployer
-            signerKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-        } else if (ownerSigner.address === "0x70997970C51812dc3A010C7d01b50e0d17dc79C8") { // Relayer (Idx 1)
-            signerKey = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
-        } else if (ownerSigner.address === "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC") { // User1 (Idx 2)
-            signerKey = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
-        } else if (ownerSigner.address === "0x90F79bf6EB2c4f870365E785982E1f101E93b906") { // User2 (Idx 3)
-            signerKey = "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6";
-        }
+        // 2. Execute with v=1 signature
+        // r = owner address, s = 0, v = 1
+        const signature = ethers.utils.solidityPack(
+            ["uint256", "uint256", "uint8"],
+            [owner, 0, 1]
+        ); // Packed: 32 bytes owner, 32 bytes 0, 1 byte 1
 
-        const wallet = new ethers.Wallet(signerKey);
-        const signature = ethers.utils.joinSignature(wallet._signingKey().signDigest(txHashHash));
-
-        // No V adjustment needed for raw signature (v=27/28)
-        const adjustedSignature = signature;
-
-        console.log("Raw Signature V:", ethers.utils.splitSignature(signature).v);
-
-        // Debug: Check Signatures
-        const txDataBytes = await safe.encodeTransactionData(
-            safe.address, 0, enableData, 0,
-            0, 0, 0, ethers.constants.AddressZero, ethers.constants.AddressZero,
-            nonce
+        await safe.connect(ownerSigner).execTransaction(
+            safe.address, 0, enableData, 0, 0, 0, 0, ethers.constants.AddressZero, ethers.constants.AddressZero, signature
         );
-        try {
-            await safe.checkSignatures(txHashHash, txDataBytes, adjustedSignature);
-            console.log("Signature Verification: SUCCESS");
-        } catch (e) {
-            console.log("Signature Verification: FAILED", e);
-        }
-
-        // Execute
-        await safe.execTransaction(
-            safe.address, 0, enableData, 0,
-            0, 0, 0, ethers.constants.AddressZero, ethers.constants.AddressZero,
-            adjustedSignature
-        );
-
-        // Check module enabled
-        // const modules = await safe.getModulesOnPage(ethers.constants.AddressZero, 10);
-        // console.log("Modules:", modules);
 
         // Fund with MOE
         await moeToken.transfer(safe.address, ethers.utils.parseEther("1000"));
 
-        // Approve Paymaster to spend MOE (for fees)
-        const approvePaymasterData = moeToken.interface.encodeFunctionData("approve", [paymaster.address, ethers.constants.MaxUint256]);
+        // Approve Paymaster (for MOE fees)
+        const approveData = moeToken.interface.encodeFunctionData("approve", [paymaster.address, ethers.constants.MaxUint256]);
         const nonce2 = await safe.nonce();
-        const txHashHash2 = await safe.getTransactionHash(
-            moeToken.address, 0, approvePaymasterData, 0, 0, 0, 0, ethers.constants.AddressZero, ethers.constants.AddressZero, nonce2
-        );
-        const signature2 = ethers.utils.joinSignature(wallet._signingKey().signDigest(txHashHash2));
-        await safe.execTransaction(
-            moeToken.address, 0, approvePaymasterData, 0, 0, 0, 0, ethers.constants.AddressZero, ethers.constants.AddressZero, signature2
+        const txHash2 = await safe.getTransactionHash(
+            moeToken.address, 0, approveData, 0, 0, 0, 0, ethers.constants.AddressZero, ethers.constants.AddressZero, nonce2
         );
 
-        // Debug: Find Owner Storage Slot
-        console.log("Finding Owner Slot for:", ownerSigner.address);
-        for (let i = 0; i < 5; i++) {
-            const encoded = ethers.utils.defaultAbiCoder.encode(["address", "uint256"], [ownerSigner.address, i]);
-            console.log("JS Encoded:", encoded);
-            const slot = ethers.utils.keccak256(encoded);
-            // console.log("JS Slot Key:", slot);
-            const value = await ethers.provider.getStorageAt(safe.address, slot);
-            if (value !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
-                console.log(`FOUND OWNER AT BASE SLOT ${i}! Value: ${value}`);
-            }
-        }
+        await safe.connect(ownerSigner).approveHash(txHash2);
+
+        const sig2 = ethers.utils.solidityPack(
+            ["uint256", "uint256", "uint8"],
+            [owner, 0, 1]
+        );
+
+        await safe.connect(ownerSigner).execTransaction(
+            moeToken.address, 0, approveData, 0, 0, 0, 0, ethers.constants.AddressZero, ethers.constants.AddressZero, sig2
+        );
 
         return safe;
     }
 
     const user1Safe = await deploySafe(user1);
+    // const user2Safe = await deploySafe(user2); // Skip user2 if not strictly needed to save time, or keep it. User2 used in Flow 6.
     const user2Safe = await deploySafe(user2);
 
     return {

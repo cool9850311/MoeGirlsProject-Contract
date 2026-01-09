@@ -16,6 +16,10 @@ module.exports = {
   networks: {
     hardhat: {
       chainId: 31337,
+      forking: {
+        url: process.env.SEPOLIA_RPC || "https://1rpc.io/sepolia",
+        // blockNumber: 7000000 // Removed to use latest block for better public RPC compatibility
+      }
     },
     arbitrumSepolia: {
       url: process.env.ARBITRUM_SEPOLIA_RPC || "https://sepolia-rollup.arbitrum.io/rpc",
