@@ -19,3 +19,8 @@ slither-report.md
 # Mythril
 mythril-report.md
 mythril-report.json
+
+*.log
+hardhat-data/
+edr-cache/
+head

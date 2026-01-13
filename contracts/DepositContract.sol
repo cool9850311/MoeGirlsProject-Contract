@@ -102,7 +102,7 @@ contract DepositContract is ReentrancyGuard, Ownable {
 
     /**
      * @dev Backend 代扣充值 (需先 Approve)
-     * @param from 扣款帳戶 (Safe)
+     * @param from 扣款帳戶 (EOA)
      * @param amount 金額
      */
     function depositFor(
