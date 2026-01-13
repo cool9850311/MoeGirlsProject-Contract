@@ -683,10 +683,7 @@ Our test suite covers:
 ```javascript
 {
   chainId: 31337,
-  forking: {
-    url: "https://sepolia-rollup.arbitrum.io/rpc",
-    enabled: true
-  }
+  url: "http://127.0.0.1:8545"
 }
 ```
 
@@ -735,26 +732,3 @@ ARBISCAN_API_KEY=your_arbiscan_api_key_here
 - [Slither](https://github.com/crytic/slither): Static analysis framework
 - [Mythril](https://github.com/ConsenSys/mythril): Security analysis tool
 
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
-
----
-
-## 🤝 Contributing
-
-This is a research project. For suggestions or improvements, please open an issue or submit a pull request.
-
----
-
-## ⚠️ Disclaimer
-
-This project is **for research and educational purposes**. While security audits have been performed, use in production at your own risk. Always conduct thorough security reviews before deploying to mainnet.
-
----
-
-**Built with ❤️ for the Ethereum community**
-
-*Exploring the future of gasless GameFi experiences*
