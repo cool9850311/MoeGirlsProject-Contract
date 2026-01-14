@@ -725,7 +725,6 @@ ARBISCAN_API_KEY=your_arbiscan_api_key_here
 
 - [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/5.x/)
 - [Hardhat Documentation](https://hardhat.org/docs)
-- [Event Storming Specification](./Event-Storming.md)
 
 ### Security Tools
 
