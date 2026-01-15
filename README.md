@@ -2,30 +2,30 @@
 
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-blue)](https://soliditylang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/Tests-84%2F84%20Passing-brightgreen)](./test)
+[![Tests](https://img.shields.io/badge/Tests-160%2F160%20Passing-brightgreen)](./test)
 [![Security](https://img.shields.io/badge/Security-Audited-success)](./SECURITY-AUDIT-SUMMARY.md)
 
 > **Research Project**: Exploring the feasibility of gasless GameFi on EVM-compatible chains through EIP-2612/ERC-7604 Permit patterns and Backend Relayer architecture.
 
 ## 📋 Table of Contents
 
-- [Overview](#-overview)
-- [Key Features](#-key-features)
-- [Quick Start](#-quick-start)
-- [Architecture](#-architecture)
-- [Core Flows](#-core-flows)
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Core Flows](#core-flows)
   - [Flow 3: Withdraw (Vesting)](#flow-3-withdraw-vesting)
   - [Flow 4: Deposit](#flow-4-deposit)
   - [Flow 5: NFT Mint](#flow-5-nft-mint)
   - [Flow 6: NFT Marketplace](#flow-6-nft-marketplace)
-- [Smart Contracts](#-smart-contracts)
-- [Security Audit](#-security-audit)
-- [Gas Costs](#-gas-costs)
-- [Development](#-development)
+- [Smart Contracts](#smart-contracts)
+- [Security Audit](#security-audit)
+- [Gas Costs](#gas-costs)
+- [Development](#development)
 
 ---
 
-## 🎯 Overview
+## Overview
 
 The MoeGirls Project is a **research-focused implementation** investigating how to build **truly gasless GameFi** experiences on EVM-compatible blockchains. By leveraging **EIP-2612 (ERC-20 Permit)** and **ERC-7604 (ERC-1155 Permit)** standards combined with a **Backend Relayer** pattern, we enable users to interact with blockchain without ever paying gas fees.
 
@@ -52,18 +52,18 @@ We **migrated away** from the complex **Safe Smart Account + ERC-4337** stack to
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 - **🎮 Gasless Gameplay**: Users interact without holding native tokens
 - **🔐 EIP Standards**: Built on EIP-2612, ERC-7604, and EIP-712
 - **💰 Flexible Economics**: Deposit, withdraw, trade NFTs - all gasless
 - **🛡️ Security Audited**: Analyzed with Slither and Mythril
-- **✅ 100% Test Coverage**: 84/84 tests passing
+- **✅ 100% Test Coverage**: 160/160 tests passing
 - **📦 OpenZeppelin**: Using audited OZ contracts v5.0.0
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -105,7 +105,7 @@ myth analyze artifacts/contracts/YourContract.sol/YourContract.json
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ### Overall System Design
 
@@ -174,7 +174,7 @@ if (result) {
 
 ---
 
-## 🔄 Core Flows
+## Core Flows
 
 ### Flow 3: Withdraw (Vesting)
 
@@ -402,13 +402,13 @@ sequenceDiagram
     end
 
     rect rgb(240, 240, 255)
-        Note over Backend,Market: Phase 3: Backend Matches Orders
+        Note over Backend,Market: Phase 3: Backend Matches Orders (onlyOwner)
         Backend->>Backend: Matching Engine:<br/>Find: buyOrder.maxPrice ≥ sellOrder.minPrice<br/>Match found: 120 ≥ 100 ✅
 
         Backend->>Backend: eth_call simulation:<br/>matchOrders(...)<br/>✅ Verify approvals & nonces
 
         Backend->>Market: matchOrders(sellOrder, sellSig, buyOrder, buySig)
-        Note over Backend: Backend pays gas (~191k)
+        Note over Backend: Backend pays gas (~192k)<br/>Only owner can call (onlyOwner)
 
         Market->>Market: Verify signatures (ecrecover)<br/>Check prices: 120 ≥ 100 ✅<br/>Check nonces (prevent replay)
 
@@ -445,13 +445,18 @@ END IF
 - **EIP-2612**: MOE token approval (ERC-20 Permit)
 - **EIP-712**: Order signature (structured data)
 
+**Access Control**:
+- ✅ **onlyOwner**: Only the Backend (contract owner) can call `matchOrders()`
+- ✅ **Prevents MEV**: Orders are matched off-chain, no front-running risk
+- ✅ **Order Cancellation**: Users cancel orders via backend API (gasless), not on-chain
+
 **Gas Costs**:
 - **User**: 0 gas (only signs messages)
-- **Backend**: ~191k gas per matched order (~$0.06 at 20 gwei)
+- **Backend**: ~192k gas per matched order (~$0.06 at 20 gwei)
 
 ---
 
-## 📦 Smart Contracts
+## Smart Contracts
 
 ### Contract Overview
 
@@ -479,7 +484,7 @@ END IF
 | Feature | Implementation | Benefit |
 |---------|----------------|---------|
 | **Reentrancy Protection** | `ReentrancyGuard` modifier | Prevents reentrancy attacks |
-| **Access Control** | `Ownable` (onlyOwner) | Restricts critical functions to backend |
+| **Access Control** | `Ownable` (onlyOwner) | All relayer functions restricted to backend owner |
 | **Permit Signatures** | EIP-712 + ECDSA | Gasless approvals with cryptographic security |
 | **Nonce Management** | OpenZeppelin `Nonces` | Prevents signature replay attacks |
 | **SafeERC20** | OpenZeppelin library | Safe token transfers |
@@ -487,7 +492,7 @@ END IF
 
 ---
 
-## 🛡️ Security Audit
+## Security Audit
 
 ### Audit Summary
 
@@ -497,7 +502,7 @@ All contracts have been analyzed using industry-standard security tools:
 |------|---------|--------|--------------|
 | **Mythril** | v0.24.8 | ✅ **PASS** | 0 critical, 0 high, 0 medium |
 | **Slither** | v0.11.3 | ✅ **PASS** | 0 critical, 0 high (3 false positives), 0 medium (2 OZ internals) |
-| **Tests** | Hardhat | ✅ **PASS** | 84/84 tests passing (100%) |
+| **Tests** | Hardhat | ✅ **PASS** | 160/160 tests passing (100%) |
 
 ### Mythril Results
 
@@ -564,7 +569,7 @@ For full audit details, see [SECURITY-AUDIT-REPORT.md](./SECURITY-AUDIT-REPORT.m
 
 ---
 
-## ⛽ Gas Costs
+## Gas Costs
 
 ### Real-World Gas Costs (from Hardhat Tests)
 
@@ -574,11 +579,11 @@ All costs shown are **paid by the backend**, not users.
 
 | Operation | Gas Cost | USD Cost* | User Pays |
 |-----------|----------|-----------|-----------|
-| **depositWithPermit()** | 214,435 | $0.06 | $0.00 ✅ |
-| **mintWithPermit()** | 158,199 | $0.05 | $0.00 ✅ |
-| **matchOrders()** | 191,029 | $0.06 | $0.00 ✅ |
-| **release() [Vesting]** | 63,946 | $0.02 | $0.00 ✅ |
-| **createVesting()** | 375,010 | $0.11 | $0.00 ✅ |
+| **depositWithPermit()** | 214,438 | $0.06 | $0.00 ✅ |
+| **mintWithPermit()** | 158,202 | $0.05 | $0.00 ✅ |
+| **matchOrders()** | 192,262 | $0.06 | $0.00 ✅ |
+| **release() [Vesting]** | 67,805 | $0.02 | $0.00 ✅ |
+| **createVesting()** | 370,823 | $0.11 | $0.00 ✅ |
 
 \* *Assuming 20 gwei gas price, $3000 ETH*
 
@@ -596,9 +601,9 @@ All costs shown are **paid by the backend**, not users.
 |----------|----------|------------------|
 | MOEToken | 1,151,632 | 3.8% |
 | DepositContract | 894,546 | 3.0% |
-| MoeGirlsNFT | 2,015,769 | 6.7% |
-| MoeGirlsMarketplace | 1,157,326 | 3.9% |
-| VestingWalletFactory | 1,481,941 | 4.9% |
+| MoeGirlsNFT | 2,015,770 | 6.7% |
+| MoeGirlsMarketplace | 1,220,688 | 4.1% |
+| VestingWalletFactory | 1,481,942 | 4.9% |
 
 ### Gas Savings Analysis
 
@@ -622,7 +627,7 @@ TOTAL                  214,435 gas   $0.000 paid by user ✅
 
 ---
 
-## 🛠️ Development
+## Development
 
 ### Local Development
 
@@ -663,16 +668,19 @@ Our test suite covers:
 - **Security Tests**: Signature verification, replay protection, access control
 
 ```bash
-✅ 84/84 tests passing (100%)
+✅ 160/160 tests passing (100%)
 
 ✅ MOEToken                     20/20 tests
 ✅ DepositContract              26/26 tests
+✅ MoeGirlsNFT                  33/33 tests
+✅ MoeGirlsMarketplace          29/29 tests
+✅ StageBasedVestingWallet      30/30 tests
 ✅ VestingWalletFactory         21/21 tests
-✅ Flows (Integration)          17/17 tests
+✅ Flows (Integration)          41/41 tests
    ├─ Flow 3 (Withdraw)         2/2 tests
    ├─ Flow 4 (Deposit)          2/2 tests
    ├─ Flow 5 (NFT Mint)         2/2 tests
-   ├─ Flow 6 (Marketplace)      8/8 tests
+   ├─ Flow 6 (Marketplace)      7/7 tests
    └─ ERC-7604 Permit           3/3 tests
 ```
 
@@ -712,7 +720,7 @@ ARBISCAN_API_KEY=your_arbiscan_api_key_here
 
 ---
 
-## 📚 References
+## References
 
 ### EIP Standards
 

@@ -7,13 +7,14 @@ import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title MoeGirlsMarketplace
  * @dev Off-chain Orderbook Marketplace for MoeGirlsNFT
  * Supports atomic swaps between ERC1155 (NFT) and ERC20 (MOE) via EIP-712 signatures.
  */
-contract MoeGirlsMarketplace is EIP712, ReentrancyGuard {
+contract MoeGirlsMarketplace is EIP712, ReentrancyGuard, Ownable {
     using ECDSA for bytes32;
 
     IERC1155 public immutable nftContract;
@@ -40,9 +41,7 @@ contract MoeGirlsMarketplace is EIP712, ReentrancyGuard {
         uint256 price
     );
 
-    event OrderCancelled(address indexed user, uint256 nonce);
-
-    constructor(address _nftContract, address _paymentToken) EIP712("MoeGirlsMarketplace", "1") {
+    constructor(address _nftContract, address _paymentToken) EIP712("MoeGirlsMarketplace", "1") Ownable(msg.sender) {
         require(_nftContract != address(0), "Invalid NFT address");
         require(_paymentToken != address(0), "Invalid Payment Token address");
         nftContract = IERC1155(_nftContract);
@@ -69,14 +68,14 @@ contract MoeGirlsMarketplace is EIP712, ReentrancyGuard {
 
     /**
      * @dev Match a Sell Order and a Buy Order atomically.
-     * Called by the Backend (Relayer) or anyone involved.
+     * Called by the Backend (Relayer) only.
      */
     function matchOrders(
         SellOrder calldata sellOrder,
         bytes calldata sellSignature,
         BuyOrder calldata buyOrder,
         bytes calldata buySignature
-    ) external nonReentrant {
+    ) external nonReentrant onlyOwner {
         // 1. Validation Logic
         bytes32 sellHash = _hashSellOrder(sellOrder);
         bytes32 buyHash = _hashBuyOrder(buyOrder);
@@ -121,14 +120,6 @@ contract MoeGirlsMarketplace is EIP712, ReentrancyGuard {
         nftContract.safeTransferFrom(sellOrder.maker, buyOrder.maker, sellOrder.tokenId, sellOrder.amount, "");
 
         emit OrderMatched(sellHash, buyHash, sellOrder.maker, buyOrder.maker, sellOrder.tokenId, sellOrder.amount, executionPrice);
-    }
-
-    /**
-     * @dev Cancel an order nonce
-     */
-    function cancelOrder(uint256 nonce) external {
-        isNonceUsed[msg.sender][nonce] = true;
-        emit OrderCancelled(msg.sender, nonce);
     }
 
     // --- Internal Helpers ---
