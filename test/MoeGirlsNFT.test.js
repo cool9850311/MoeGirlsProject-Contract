@@ -659,4 +659,46 @@ describe("MoeGirlsNFT", function () {
             ).to.be.revertedWith("Invalid card ID");
         });
     });
+
+    describe("balanceOfBatch Tests", function () {
+        it("Should return correct balances for batch query of IDs 1-10", async function () {
+            // Mint 5 different NFTs with IDs 1, 3, 5, 7, 9 and amounts 1, 3, 5, 7, 9
+            const mintIds = [1, 3, 5, 7, 9];
+            const mintAmounts = [1, 3, 5, 7, 9];
+
+            for (let i = 0; i < mintIds.length; i++) {
+                await nft.connect(deployer).mintWithApproval(
+                    user1.address,
+                    user1.address,
+                    mintAmounts[i],
+                    mintIds[i],
+                    `ipfs://test${mintIds[i]}`,
+                    0 // Free mint
+                );
+            }
+
+            // Prepare balanceOfBatch query for IDs 1-10
+            const accounts = Array(10).fill(user1.address);
+            const ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+            // Query balances
+            const balances = await nft.balanceOfBatch(accounts, ids);
+
+            // Verify data structure: should be uint256[] array
+            expect(Array.isArray(balances)).to.be.true;
+            expect(balances.length).to.equal(10);
+
+            // Verify balances are correct
+            expect(balances[0]).to.equal(1);  // ID 1: minted 1
+            expect(balances[1]).to.equal(0);  // ID 2: not minted
+            expect(balances[2]).to.equal(3);  // ID 3: minted 3
+            expect(balances[3]).to.equal(0);  // ID 4: not minted
+            expect(balances[4]).to.equal(5);  // ID 5: minted 5
+            expect(balances[5]).to.equal(0);  // ID 6: not minted
+            expect(balances[6]).to.equal(7);  // ID 7: minted 7
+            expect(balances[7]).to.equal(0);  // ID 8: not minted
+            expect(balances[8]).to.equal(9);  // ID 9: minted 9
+            expect(balances[9]).to.equal(0);  // ID 10: not minted
+        });
+    });
 });
