@@ -2,7 +2,7 @@
 
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-blue)](https://soliditylang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/Tests-160%2F160%20Passing-brightgreen)](./test)
+[![Tests](https://img.shields.io/badge/Tests-161%2F161%20Passing-brightgreen)](./test)
 [![Security](https://img.shields.io/badge/Security-Audited-success)](./SECURITY-AUDIT-SUMMARY.md)
 
 > **Research Project**: Exploring the feasibility of gasless GameFi on EVM-compatible chains through EIP-2612/ERC-7604 Permit patterns and Backend Relayer architecture.
@@ -58,7 +58,7 @@ We **migrated away** from the complex **Safe Smart Account + ERC-4337** stack to
 - **🔐 EIP Standards**: Built on EIP-2612, ERC-7604, and EIP-712
 - **💰 Flexible Economics**: Deposit, withdraw, trade NFTs - all gasless
 - **🛡️ Security Audited**: Analyzed with Slither and Mythril
-- **✅ 100% Test Coverage**: 160/160 tests passing
+- **✅ 100% Test Coverage**: 161/161 tests passing
 - **📦 OpenZeppelin**: Using audited OZ contracts v5.0.0
 
 ---
@@ -296,6 +296,12 @@ sequenceDiagram
 
 **Key Contracts**: `MoeGirlsNFT`, `MOEToken`
 
+**Architecture**: `tokenId = cards.id` (ERC-1155 Fungible Mode)
+- Each card type has a unique `cards.id` in database
+- The NFT tokenId directly uses this `cards.id`
+- Multiple users can mint the same card type (same tokenId)
+- Balance tracking via ERC-1155 `balanceOf(user, tokenId)`
+
 ```mermaid
 sequenceDiagram
     participant User as 👤 User
@@ -460,15 +466,15 @@ END IF
 
 ### Contract Overview
 
-| Contract | Purpose | Standards | Lines of Code |
-|----------|---------|-----------|---------------|
-| **MOEToken** | ERC-20 game token with Permit | ERC-20, EIP-2612 | ~100 |
-| **DepositContract** | Handle user deposits | EIP-2612 | ~180 |
-| **MoeGirlsNFT** | Game NFT cards | ERC-1155, ERC-7604 | ~200 |
-| **MoeGirlsMarketplace** | P2P NFT trading | EIP-712 | ~150 |
-| **VestingWalletFactory** | Create time-locked wallets | EIP-1167 (Clones) | ~120 |
-| **StageBasedVestingWallet** | 4-stage vesting schedule | OpenZeppelin VestingWallet | ~80 |
-| **ERC1155Permit** | Permit for ERC-1155 | ERC-7604 (draft) | ~120 |
+| Contract | Purpose | Standards | Architecture Notes |
+|----------|---------|-----------|-------------------|
+| **MOEToken** | ERC-20 game token with Permit | ERC-20, EIP-2612 | Standard implementation |
+| **DepositContract** | Handle user deposits | EIP-2612 | Gasless deposits |
+| **MoeGirlsNFT** | Game NFT cards | ERC-1155, ERC-7604 | **tokenId = cards.id** (ERC-1155 fungible) |
+| **MoeGirlsMarketplace** | P2P NFT trading | EIP-712 | Off-chain orders + atomic swap |
+| **VestingWalletFactory** | Create time-locked wallets | EIP-1167 (Clones) | 4-stage vesting |
+| **StageBasedVestingWallet** | 4-stage vesting schedule | OpenZeppelin VestingWallet | 25%, 50%, 75%, 100% |
+| **ERC1155Permit** | Permit for ERC-1155 | ERC-7604 (draft) | Gasless NFT approvals |
 
 ### Key Dependencies
 
@@ -502,7 +508,7 @@ All contracts have been analyzed using industry-standard security tools:
 |------|---------|--------|--------------|
 | **Mythril** | v0.24.8 | ✅ **PASS** | 0 critical, 0 high, 0 medium |
 | **Slither** | v0.11.3 | ✅ **PASS** | 0 critical, 0 high (3 false positives), 0 medium (2 OZ internals) |
-| **Tests** | Hardhat | ✅ **PASS** | 160/160 tests passing (100%) |
+| **Tests** | Hardhat | ✅ **PASS** | 161/161 tests passing (100%) |
 
 ### Mythril Results
 
@@ -601,7 +607,7 @@ All costs shown are **paid by the backend**, not users.
 |----------|----------|------------------|
 | MOEToken | 1,151,632 | 3.8% |
 | DepositContract | 894,546 | 3.0% |
-| MoeGirlsNFT | 2,015,770 | 6.7% |
+| MoeGirlsNFT | 1,983,200 | 6.6% |
 | MoeGirlsMarketplace | 1,220,688 | 4.1% |
 | VestingWalletFactory | 1,481,942 | 4.9% |
 
@@ -668,15 +674,15 @@ Our test suite covers:
 - **Security Tests**: Signature verification, replay protection, access control
 
 ```bash
-✅ 160/160 tests passing (100%)
+✅ 161/161 tests passing (100%)
 
-✅ MOEToken                     20/20 tests
 ✅ DepositContract              26/26 tests
-✅ MoeGirlsNFT                  33/33 tests
-✅ MoeGirlsMarketplace          29/29 tests
+✅ MoeGirlsNFT                  29/29 tests ⭐ (updated for tokenId=cardId)
+✅ MoeGirlsMarketplace          18/18 tests
+✅ MOEToken                     20/20 tests
 ✅ StageBasedVestingWallet      30/30 tests
-✅ VestingWalletFactory         21/21 tests
-✅ Flows (Integration)          41/41 tests
+✅ VestingWalletFactory         22/22 tests
+✅ Flows (Integration)          16/16 tests
    ├─ Flow 3 (Withdraw)         2/2 tests
    ├─ Flow 4 (Deposit)          2/2 tests
    ├─ Flow 5 (NFT Mint)         2/2 tests

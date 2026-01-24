@@ -28,28 +28,29 @@ describe("MoeGirlsNFT", function () {
             expect(await nft.owner()).to.equal(deployer.address);
         });
 
-        it("Should start with tokenId counter at 1", async function () {
-            // First mint should get tokenId = 1
+        it("Should mint NFT with tokenId equal to cardId", async function () {
+            // tokenId should equal the cardId we pass in
             const price = ethers.utils.parseEther("1000");
+            const cardId = 1;
             await moeToken.connect(user1).approve(nft.address, price);
 
             await nft.connect(deployer).mintWithApproval(
                 user1.address,
                 user1.address,
                 1,
-                "card_first",
+                cardId,
                 "ipfs://first",
                 price
             );
 
-            const balance = await nft.balanceOf(user1.address, 1);
+            const balance = await nft.balanceOf(user1.address, cardId);
             expect(balance).to.equal(1);
         });
     });
 
     describe("mintWithApproval", function () {
         const price = ethers.utils.parseEther("1000");
-        const cardId = "card_test_001";
+        const cardId = 1;
         const metadataUri = "ipfs://QmTest123";
 
         it("Should allow owner to mint NFT with prior approval", async function () {
@@ -71,11 +72,11 @@ describe("MoeGirlsNFT", function () {
             const tokenId = event.args.tokenId;
 
             // Verify NFT minted
+            expect(tokenId).to.equal(cardId);
             expect(await nft.balanceOf(user1.address, tokenId)).to.equal(1);
 
             // Verify metadata stored correctly
             expect(await nft.uri(tokenId)).to.equal(metadataUri);
-            expect(await nft.getCardId(tokenId)).to.equal(cardId);
         });
 
         it("Should transfer MOE payment from payer to owner", async function () {
@@ -108,7 +109,7 @@ describe("MoeGirlsNFT", function () {
                 price
             ))
                 .to.emit(nft, "NFTMinted")
-                .withArgs(user1.address, 1, cardId, metadataUri);
+                .withArgs(user1.address, cardId, cardId, metadataUri);
         });
 
         it("Should revert if non-owner tries to mint", async function () {
@@ -187,21 +188,21 @@ describe("MoeGirlsNFT", function () {
 
             const receipt = await tx.wait();
             const event = receipt.events.find(e => e.event === 'NFTMinted');
-            expect(event.args.tokenId).to.equal(1);
+            expect(event.args.tokenId).to.equal(cardId);
         });
 
         it("Should mint multiple NFTs to the same user", async function () {
             await moeToken.connect(user1).approve(nft.address, price.mul(3));
 
-            // Mint 3 different NFTs
+            // Mint 3 different NFTs (different cardIds)
             await nft.connect(deployer).mintWithApproval(
-                user1.address, user1.address, 1, "card_1", "ipfs://1", price
+                user1.address, user1.address, 1, 1, "ipfs://1", price
             );
             await nft.connect(deployer).mintWithApproval(
-                user1.address, user1.address, 1, "card_2", "ipfs://2", price
+                user1.address, user1.address, 1, 2, "ipfs://2", price
             );
             await nft.connect(deployer).mintWithApproval(
-                user1.address, user1.address, 1, "card_3", "ipfs://3", price
+                user1.address, user1.address, 1, 3, "ipfs://3", price
             );
 
             // User should have 3 different tokenIds (1, 2, 3)
@@ -223,14 +224,32 @@ describe("MoeGirlsNFT", function () {
                 price.mul(5)
             );
 
-            // User should have 5 copies of tokenId 1
-            expect(await nft.balanceOf(user1.address, 1)).to.equal(5);
+            // User should have 5 copies of tokenId = cardId
+            expect(await nft.balanceOf(user1.address, cardId)).to.equal(5);
+        });
+
+        it("Should accumulate balance when minting same cardId multiple times", async function () {
+            await moeToken.connect(user1).approve(nft.address, price.mul(3));
+
+            // Mint cardId=1 three times
+            await nft.connect(deployer).mintWithApproval(
+                user1.address, user1.address, 1, cardId, metadataUri, price
+            );
+            await nft.connect(deployer).mintWithApproval(
+                user1.address, user1.address, 1, cardId, metadataUri, price
+            );
+            await nft.connect(deployer).mintWithApproval(
+                user1.address, user1.address, 1, cardId, metadataUri, price
+            );
+
+            // User should have 3 copies of cardId
+            expect(await nft.balanceOf(user1.address, cardId)).to.equal(3);
         });
     });
 
     describe("mintWithPermit", function () {
         const price = ethers.utils.parseEther("1000");
-        const cardId = "card_permit_test";
+        const cardId = 10;
         const metadataUri = "ipfs://QmPermitTest";
 
         it("Should allow owner to mint NFT using EIP-2612 Permit", async function () {
@@ -282,8 +301,8 @@ describe("MoeGirlsNFT", function () {
 
             const receipt = await tx.wait();
             const event = receipt.events.find(e => e.event === 'NFTMinted');
-            expect(event.args.tokenId).to.equal(1);
-            expect(await nft.balanceOf(user1.address, 1)).to.equal(1);
+            expect(event.args.tokenId).to.equal(cardId);
+            expect(await nft.balanceOf(user1.address, cardId)).to.equal(1);
         });
 
         it("Should revert if permit signature is expired", async function () {
@@ -387,6 +406,7 @@ describe("MoeGirlsNFT", function () {
         const price = ethers.utils.parseEther("1000");
 
         it("Should return correct URI for minted token", async function () {
+            const cardId = 20;
             const metadataUri = "ipfs://QmSpecificMetadata123";
             await moeToken.connect(user1).approve(nft.address, price);
 
@@ -394,7 +414,7 @@ describe("MoeGirlsNFT", function () {
                 user1.address,
                 user1.address,
                 1,
-                "card_uri_test",
+                cardId,
                 metadataUri,
                 price
             );
@@ -403,30 +423,11 @@ describe("MoeGirlsNFT", function () {
             const event = receipt.events.find(e => e.event === 'NFTMinted');
             const tokenId = event.args.tokenId;
 
+            expect(tokenId).to.equal(cardId);
             expect(await nft.uri(tokenId)).to.equal(metadataUri);
         });
 
-        it("Should return correct cardId for minted token", async function () {
-            const cardId = "rare_card_dragon_001";
-            await moeToken.connect(user1).approve(nft.address, price);
-
-            const tx = await nft.connect(deployer).mintWithApproval(
-                user1.address,
-                user1.address,
-                1,
-                cardId,
-                "ipfs://dragon",
-                price
-            );
-
-            const receipt = await tx.wait();
-            const event = receipt.events.find(e => e.event === 'NFTMinted');
-            const tokenId = event.args.tokenId;
-
-            expect(await nft.getCardId(tokenId)).to.equal(cardId);
-        });
-
-        it("Should differentiate URIs for different tokenIds", async function () {
+        it("Should differentiate URIs for different cardIds", async function () {
             await moeToken.connect(user1).approve(nft.address, price.mul(3));
 
             const uris = [
@@ -440,90 +441,80 @@ describe("MoeGirlsNFT", function () {
                     user1.address,
                     user1.address,
                     1,
-                    `card_${i + 1}`,
+                    i + 1, // cardId = 1, 2, 3
                     uris[i],
                     price
                 );
             }
 
-            // Verify each tokenId has its own unique URI
+            // Verify each tokenId (= cardId) has its own unique URI
             expect(await nft.uri(1)).to.equal(uris[0]);
             expect(await nft.uri(2)).to.equal(uris[1]);
             expect(await nft.uri(3)).to.equal(uris[2]);
         });
 
-        it("Should differentiate cardIds for different tokenIds", async function () {
-            await moeToken.connect(user1).approve(nft.address, price.mul(3));
+        it("Should preserve metadata URI when minting same cardId multiple times", async function () {
+            const cardId = 30;
+            const metadataUri = "ipfs://QmConsistent";
+            await moeToken.connect(user1).approve(nft.address, price.mul(2));
 
-            const cardIds = ["warrior", "mage", "archer"];
+            // First mint sets the URI
+            await nft.connect(deployer).mintWithApproval(
+                user1.address, user1.address, 1, cardId, metadataUri, price
+            );
+            expect(await nft.uri(cardId)).to.equal(metadataUri);
 
-            for (let i = 0; i < 3; i++) {
-                await nft.connect(deployer).mintWithApproval(
-                    user1.address,
-                    user1.address,
-                    1,
-                    cardIds[i],
-                    `ipfs://${cardIds[i]}`,
-                    price
-                );
-            }
-
-            // Verify each tokenId has its own unique cardId
-            expect(await nft.getCardId(1)).to.equal(cardIds[0]);
-            expect(await nft.getCardId(2)).to.equal(cardIds[1]);
-            expect(await nft.getCardId(3)).to.equal(cardIds[2]);
+            // Second mint of same cardId preserves URI
+            await nft.connect(deployer).mintWithApproval(
+                user1.address, user1.address, 1, cardId, "ipfs://different", price
+            );
+            expect(await nft.uri(cardId)).to.equal(metadataUri); // Should still be original
         });
     });
 
-    describe("TokenId Counter", function () {
+    describe("TokenId = CardId", function () {
         const price = ethers.utils.parseEther("1000");
 
-        it("Should increment tokenId for each mint", async function () {
+        it("Should use cardId as tokenId", async function () {
             await moeToken.connect(user1).approve(nft.address, price.mul(5));
 
-            for (let i = 1; i <= 5; i++) {
+            for (let cardId = 1; cardId <= 5; cardId++) {
                 const tx = await nft.connect(deployer).mintWithApproval(
                     user1.address,
                     user1.address,
                     1,
-                    `card_${i}`,
-                    `ipfs://${i}`,
+                    cardId,
+                    `ipfs://${cardId}`,
                     price
                 );
 
                 const receipt = await tx.wait();
                 const event = receipt.events.find(e => e.event === 'NFTMinted');
-                expect(event.args.tokenId).to.equal(i);
+                expect(event.args.tokenId).to.equal(cardId);
+                expect(event.args.cardId).to.equal(cardId);
             }
         });
 
-        it("Should ensure tokenId uniqueness across multiple users", async function () {
-            await moeToken.connect(user1).approve(nft.address, price.mul(2));
-            await moeToken.connect(user2).approve(nft.address, price.mul(2));
+        it("Should allow different users to mint the same cardId (fungible)", async function () {
+            const cardId = 100;
+            await moeToken.connect(user1).approve(nft.address, price);
+            await moeToken.connect(user2).approve(nft.address, price);
 
-            // User1 mints tokenId 1
-            let tx = await nft.connect(deployer).mintWithApproval(
-                user1.address, user1.address, 1, "card_1", "ipfs://1", price
+            // User1 mints cardId 100
+            await nft.connect(deployer).mintWithApproval(
+                user1.address, user1.address, 1, cardId, "ipfs://100", price
             );
-            let receipt = await tx.wait();
-            let event = receipt.events.find(e => e.event === 'NFTMinted');
-            expect(event.args.tokenId).to.equal(1);
+            expect(await nft.balanceOf(user1.address, cardId)).to.equal(1);
 
-            // User2 mints tokenId 2 (not 1)
-            tx = await nft.connect(deployer).mintWithApproval(
-                user2.address, user2.address, 1, "card_2", "ipfs://2", price
+            // User2 also mints cardId 100 (same tokenId, different owner)
+            await nft.connect(deployer).mintWithApproval(
+                user2.address, user2.address, 1, cardId, "ipfs://100", price
             );
-            receipt = await tx.wait();
-            event = receipt.events.find(e => e.event === 'NFTMinted');
-            expect(event.args.tokenId).to.equal(2);
+            expect(await nft.balanceOf(user2.address, cardId)).to.equal(1);
 
-            // User1 mints again, gets tokenId 3
-            tx = await nft.connect(deployer).mintWithApproval(
-                user1.address, user1.address, 1, "card_3", "ipfs://3", price
-            );
-            receipt = await tx.wait();
-            event = receipt.events.find(e => e.event === 'NFTMinted');
-            expect(event.args.tokenId).to.equal(3);
+            // Both users own the same tokenId (ERC-1155 fungible behavior)
+            expect(await nft.balanceOf(user1.address, cardId)).to.equal(1);
+            expect(await nft.balanceOf(user2.address, cardId)).to.equal(1);
         });
     });
 
@@ -536,13 +527,14 @@ describe("MoeGirlsNFT", function () {
         });
 
         it("Should allow safe transfers", async function () {
+            const cardId = 200;
             await moeToken.connect(user1).approve(nft.address, price);
 
             await nft.connect(deployer).mintWithApproval(
                 user1.address,
                 user1.address,
                 1,
-                "card_transfer_test",
+                cardId,
                 "ipfs://transfer",
                 price
             );
@@ -551,23 +543,24 @@ describe("MoeGirlsNFT", function () {
             await nft.connect(user1).safeTransferFrom(
                 user1.address,
                 user2.address,
-                1, // tokenId
+                cardId, // tokenId = cardId
                 1, // amount
                 "0x"
             );
 
-            expect(await nft.balanceOf(user1.address, 1)).to.equal(0);
-            expect(await nft.balanceOf(user2.address, 1)).to.equal(1);
+            expect(await nft.balanceOf(user1.address, cardId)).to.equal(0);
+            expect(await nft.balanceOf(user2.address, cardId)).to.equal(1);
         });
 
         it("Should support setApprovalForAll", async function () {
+            const cardId = 201;
             await moeToken.connect(user1).approve(nft.address, price);
 
             await nft.connect(deployer).mintWithApproval(
                 user1.address,
                 user1.address,
                 1,
-                "card_approval_test",
+                cardId,
                 "ipfs://approval",
                 price
             );
@@ -580,18 +573,19 @@ describe("MoeGirlsNFT", function () {
             await nft.connect(user2).safeTransferFrom(
                 user1.address,
                 user2.address,
-                1,
+                cardId,
                 1,
                 "0x"
             );
 
-            expect(await nft.balanceOf(user2.address, 1)).to.equal(1);
+            expect(await nft.balanceOf(user2.address, cardId)).to.equal(1);
         });
     });
 
     describe("Edge Cases", function () {
         it("Should handle very large price values", async function () {
             const largePrice = ethers.utils.parseEther("1000000"); // 1M MOE
+            const cardId = 500;
 
             // Mint enough MOE for user1
             await moeToken.mint(user1.address, largePrice);
@@ -602,7 +596,7 @@ describe("MoeGirlsNFT", function () {
                     user1.address,
                     user1.address,
                     1,
-                    "expensive_card",
+                    cardId,
                     "ipfs://expensive",
                     largePrice
                 )
@@ -611,13 +605,14 @@ describe("MoeGirlsNFT", function () {
 
         it("Should handle empty metadata URI", async function () {
             const price = ethers.utils.parseEther("1000");
+            const cardId = 501;
             await moeToken.connect(user1).approve(nft.address, price);
 
             const tx = await nft.connect(deployer).mintWithApproval(
                 user1.address,
                 user1.address,
                 1,
-                "card_no_uri",
+                cardId,
                 "", // Empty URI
                 price
             );
@@ -629,6 +624,7 @@ describe("MoeGirlsNFT", function () {
 
         it("Should handle very long metadata URIs", async function () {
             const price = ethers.utils.parseEther("1000");
+            const cardId = 502;
             const longUri = "ipfs://Qm" + "a".repeat(500); // Very long URI
 
             await moeToken.connect(user1).approve(nft.address, price);
@@ -637,7 +633,7 @@ describe("MoeGirlsNFT", function () {
                 user1.address,
                 user1.address,
                 1,
-                "card_long_uri",
+                cardId,
                 longUri,
                 price
             );
@@ -645,6 +641,22 @@ describe("MoeGirlsNFT", function () {
             const receipt = await tx.wait();
             const event = receipt.events.find(e => e.event === 'NFTMinted');
             expect(await nft.uri(event.args.tokenId)).to.equal(longUri);
+        });
+
+        it("Should revert when cardId is 0", async function () {
+            const price = ethers.utils.parseEther("1000");
+            await moeToken.connect(user1).approve(nft.address, price);
+
+            await expect(
+                nft.connect(deployer).mintWithApproval(
+                    user1.address,
+                    user1.address,
+                    1,
+                    0, // Invalid cardId
+                    "ipfs://test",
+                    price
+                )
+            ).to.be.revertedWith("Invalid card ID");
         });
     });
 });

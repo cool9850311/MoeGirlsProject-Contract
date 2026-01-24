@@ -34,7 +34,7 @@ describe("MoeGirlsMarketplace", function () {
             user1.address,
             user1.address,
             1,
-            "test_card",
+            1, // cardId as uint256
             "ipfs://test",
             price
         );
@@ -183,7 +183,7 @@ describe("MoeGirlsMarketplace", function () {
                 user1.address,
                 user1.address,
                 5, // 5 copies
-                "multi_copy_card",
+                100, // cardId as uint256
                 "ipfs://multi",
                 mintPrice
             );
@@ -196,7 +196,7 @@ describe("MoeGirlsMarketplace", function () {
 
             const sellOrder = {
                 maker: user1.address,
-                tokenId: 2, // New tokenId
+                tokenId: 100, // Match the minted cardId
                 amount: 5,
                 price: tradePrice,
                 deadline: deadline,
@@ -218,7 +218,7 @@ describe("MoeGirlsMarketplace", function () {
 
             const buyOrder = {
                 maker: user2.address,
-                tokenId: 2,
+                tokenId: 100, // Match the minted cardId
                 amount: 5,
                 price: tradePrice,
                 deadline: deadline,
@@ -241,8 +241,8 @@ describe("MoeGirlsMarketplace", function () {
             await marketplace.connect(deployer).matchOrders(sellOrder, sellSig, buyOrder, buySig);
 
             // User2 should have all 5 copies
-            expect(await nft.balanceOf(user2.address, 2)).to.equal(5);
-            expect(await nft.balanceOf(user1.address, 2)).to.equal(0);
+            expect(await nft.balanceOf(user2.address, 100)).to.equal(5);
+            expect(await nft.balanceOf(user1.address, 100)).to.equal(0);
         });
     });
 
@@ -566,7 +566,7 @@ describe("MoeGirlsMarketplace", function () {
                 user2.address,
                 user2.address,
                 1,
-                "card_user2",
+                200, // cardId as uint256
                 "ipfs://user2",
                 mintPrice
             );
@@ -1020,7 +1020,7 @@ describe("MoeGirlsMarketplace", function () {
                 user1.address,
                 user1.address,
                 1,
-                "card_test_2",
+                300, // cardId as uint256
                 "ipfs://test2",
                 mintPrice
             );

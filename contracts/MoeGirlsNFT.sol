@@ -23,9 +23,6 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 contract MoeGirlsNFT is ERC1155Permit, Ownable {
     using Strings for uint256;
 
-    // Token ID -> Card ID mapping
-    mapping(uint256 => string) private _cardIds;
-
     // Token ID -> IPFS Metadata URI mapping
     mapping(uint256 => string) private _tokenURIs;
 
@@ -36,17 +33,14 @@ contract MoeGirlsNFT is ERC1155Permit, Ownable {
     event NFTMinted(
         address indexed to,
         uint256 indexed tokenId,
-        string cardId,
+        uint256 cardId,
         string metadataUri
     );
     event BatchNFTMinted(
         address indexed to,
         uint256[] tokenIds,
-        string[] cardIds
+        uint256[] cardIds
     );
-
-    // Counter for generic token IDs (optional, if we want auto-increment)
-    uint256 private _nextTokenId = 1;
 
     constructor(address _moeToken)
         ERC1155("")
@@ -62,7 +56,7 @@ contract MoeGirlsNFT is ERC1155Permit, Ownable {
      * @param payer Address to pull MOE tokens from (user's EOA)
      * @param to Address to receive the NFT (user's EOA)
      * @param amount Number of copies to mint
-     * @param cardId Game Card ID string
+     * @param cardId Game Card ID (cards.id from database)
      * @param metadataUri IPFS URI for metadata
      * @param price Total price to pay in MOE
      */
@@ -70,16 +64,13 @@ contract MoeGirlsNFT is ERC1155Permit, Ownable {
         address payer,
         address to,
         uint256 amount,
-        string memory cardId,
+        uint256 cardId,
         string memory metadataUri,
         uint256 price
     ) external onlyOwner {
         require(payer != address(0), "Invalid payer");
         require(to != address(0), "Invalid recipient");
-
-        // 0. State Update (Checks-Effects)
-        uint256 tokenId = _nextTokenId;
-        _nextTokenId++;
+        require(cardId > 0, "Invalid card ID");
 
         // 1. Pull Payment (Interactions)
         // requires payer to have approved this contract
@@ -88,10 +79,14 @@ contract MoeGirlsNFT is ERC1155Permit, Ownable {
             require(success, "Payment failed");
         }
 
-        // 2. Mint NFT (Interactions - but internal safe mint)
+        // 2. Mint NFT (tokenId = cardId)
+        uint256 tokenId = cardId;
         _mint(to, tokenId, amount, hex"");
-        _cardIds[tokenId] = cardId;
-        _tokenURIs[tokenId] = metadataUri;
+
+        // Store metadata URI (only set if not already set)
+        if (bytes(_tokenURIs[tokenId]).length == 0) {
+            _tokenURIs[tokenId] = metadataUri;
+        }
 
         emit NFTMinted(to, tokenId, cardId, metadataUri);
     }
@@ -106,7 +101,7 @@ contract MoeGirlsNFT is ERC1155Permit, Ownable {
      * @param payer Address that signed MOE permit (user's EOA)
      * @param to Address to receive NFT (user's EOA)
      * @param amount Number of NFT copies
-     * @param cardId Game Card ID
+     * @param cardId Game Card ID (cards.id from database)
      * @param metadataUri IPFS URI
      * @param price Total MOE price
      * @param deadline Permit deadline
@@ -125,7 +120,7 @@ contract MoeGirlsNFT is ERC1155Permit, Ownable {
         address payer,
         address to,
         uint256 amount,
-        string memory cardId,
+        uint256 cardId,
         string memory metadataUri,
         uint256 price,
         uint256 deadline,
@@ -135,10 +130,7 @@ contract MoeGirlsNFT is ERC1155Permit, Ownable {
     ) external onlyOwner returns (uint256 tokenId) {
         require(payer != address(0), "Invalid payer");
         require(to != address(0), "Invalid recipient");
-
-        // 0. State Update (Checks-Effects)
-        tokenId = _nextTokenId;
-        _nextTokenId++;
+        require(cardId > 0, "Invalid card ID");
 
         // 1. Execute MOE Permit (gasless approval for user)
         if (price > 0) {
@@ -150,10 +142,14 @@ contract MoeGirlsNFT is ERC1155Permit, Ownable {
             require(success, "Payment failed");
         }
 
-        // 2. Mint NFT
+        // 2. Mint NFT (tokenId = cardId)
+        tokenId = cardId;
         _mint(to, tokenId, amount, hex"");
-        _cardIds[tokenId] = cardId;
-        _tokenURIs[tokenId] = metadataUri;
+
+        // Store metadata URI (only set if not already set)
+        if (bytes(_tokenURIs[tokenId]).length == 0) {
+            _tokenURIs[tokenId] = metadataUri;
+        }
 
         emit NFTMinted(to, tokenId, cardId, metadataUri);
 
@@ -165,12 +161,5 @@ contract MoeGirlsNFT is ERC1155Permit, Ownable {
      */
     function uri(uint256 tokenId) public view override returns (string memory) {
         return _tokenURIs[tokenId];
-    }
-
-    /**
-     * @dev Returns the Game Card ID for a token ID
-     */
-    function getCardId(uint256 tokenId) external view returns (string memory) {
-        return _cardIds[tokenId];
     }
 }

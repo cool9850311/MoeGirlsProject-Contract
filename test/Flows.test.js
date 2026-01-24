@@ -227,7 +227,7 @@ describe("MoeGirls Flows (EOA + Permit)", function () {
                 user1.address,  // payer (EOA)
                 user1.address,  // recipient (EOA)
                 1,              // amount
-                "card_12345",   // cardId
+                12345,          // cardId (uint256)
                 "ipfs://Qm...", // metadataUri
                 price,
                 deadline,
@@ -251,6 +251,7 @@ describe("MoeGirls Flows (EOA + Permit)", function () {
             const price = ethers.utils.parseEther("500");
             const deadline = Math.floor(Date.now() / 1000) + 3600;
 
+            let cardId = 1;
             for (const user of [user1, user2]) {
                 const nonce = await moeToken.nonces(user.address);
                 const types = {
@@ -276,8 +277,8 @@ describe("MoeGirls Flows (EOA + Permit)", function () {
                     user.address,
                     user.address,
                     1,
-                    `card_${user.address.slice(0, 8)}`,
-                    `ipfs://user_${user.address.slice(0, 8)}`,
+                    cardId, // cardId as uint256
+                    `ipfs://card_${cardId}`,
                     price,
                     deadline,
                     sig.v, sig.r, sig.s
@@ -286,6 +287,7 @@ describe("MoeGirls Flows (EOA + Permit)", function () {
                 const receipt = await tx.wait();
                 const event = receipt.events.find(e => e.event === 'NFTMinted');
                 expect(await nft.balanceOf(user.address, event.args.tokenId)).to.equal(1);
+                cardId++;
             }
         });
     });
@@ -441,7 +443,7 @@ describe("MoeGirls Flows (EOA + Permit)", function () {
             const sig = ethers.utils.splitSignature(signature);
 
             const tx = await nft.connect(deployer).mintWithPermit(
-                user1.address, user1.address, 1, "card_market_test",
+                user1.address, user1.address, 1, 1000, // cardId as uint256
                 "ipfs://market", price, deadline, sig.v, sig.r, sig.s
             );
 
@@ -828,7 +830,7 @@ describe("MoeGirls Flows (EOA + Permit)", function () {
             );
 
             const tx = await nft.connect(deployer).mintWithPermit(
-                user1.address, user1.address, 1, "card_replay",
+                user1.address, user1.address, 1, 2000, // Different cardId
                 "ipfs://replay", mintPrice, mintDeadline, mintSig.v, mintSig.r, mintSig.s
             );
 
