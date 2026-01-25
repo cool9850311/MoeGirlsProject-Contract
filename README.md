@@ -5,6 +5,14 @@
 [![Tests](https://img.shields.io/badge/Tests-161%2F161%20Passing-brightgreen)](./test)
 [![Security](https://img.shields.io/badge/Security-Audited-success)](./SECURITY-AUDIT-SUMMARY.md)
 
+## 🎬 Introduction Video
+
+[![Watch the Introduction Video](https://img.youtube.com/vi/BqYqfsjsxZo/maxresdefault.jpg)](https://youtu.be/BqYqfsjsxZo)
+
+*Click the image above to watch the project introduction and demo*
+
+---
+
 > **Research Project**: Exploring the feasibility of gasless GameFi on EVM-compatible chains through EIP-2612/ERC-7604 Permit patterns and Backend Relayer architecture.
 
 ## 📋 Table of Contents
